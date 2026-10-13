@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Persian Reel Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0f1419;--card:#18212b;--line:#2a3644;--text:#e8eef5;--mute:#8fa1b3;--accent:#e6a23c;--ok:#4cc38a;--bad:#ef6b6b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 Inter,system-ui,sans-serif;padding:20px}
+  main{max-width:680px;margin:0 auto}
+  h1{font-size:22px;margin:4px 0 2px}
+  p.sub{color:var(--mute);margin:0 0 18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  label{display:block;font-size:13px;color:var(--mute);margin:12px 0 4px}
+  textarea,input,select{width:100%;background:#0f1419;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit}
+  textarea.fa,input.fa{direction:rtl;font-family:Vazirmatn,Inter,sans-serif;font-size:17px}
+  textarea{min-height:190px;resize:vertical}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .hint{font-size:12px;color:var(--mute);margin-top:4px}
+  button{background:var(--accent);color:#1a1205;border:0;border-radius:10px;padding:12px 16px;font:600 16px Inter,sans-serif;width:100%;margin-top:16px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  details summary{cursor:pointer;font-weight:600}
+  .status{font-size:14px}
+  .status .ok{color:var(--ok)} .status .bad{color:var(--bad)}
+  a{color:var(--accent)}
+  .check{display:flex;gap:10px;align-items:flex-start;margin-top:14px}
+  .check input{width:auto;margin-top:4px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Persian Reel Studio</h1>
+  <p class="sub">Paste a Persian script. It renders a narrated, subtitled 9:16 reel on GitHub Actions and can post it to Instagram.</p>
+
+  <div class="card">
+    <details id="setup">
+      <summary>1. Connect (one time)</summary>
+      <label for="token">GitHub token</label>
+      <input id="token" type="password" autocomplete="off" placeholder="github_pat_...">
+      <p class="hint">Fine-grained token for <b id="repoName"></b> only, with <b>Actions: Read and write</b>. Stored in this browser only (localStorage); it is sent to api.github.com and nowhere else.</p>
+    </details>
+  </div>
+
+  <div class="card">
+    <label for="script">2. Persian script</label>
+    <textarea id="script" class="fa" placeholder="متن روایت را اینجا بچسبانید..."></textarea>
+    <p class="hint" id="est">Paste the narration only (no shot list). A JSON shot list is also accepted, see README.</p>
+
+    <div class="row">
+      <div><label for="voice">Voice</label>
+        <select id="voice"><option value="fa-IR-DilaraNeural">Dilara (female)</option><option value="fa-IR-FaridNeural">Farid (male)</option></select></div>
+      <div><label for="visuals">Visuals</label>
+        <select id="visuals"><option value="pollinations">AI stills + camera move (free)</option><option value="pexels">Stock video (needs Pexels key)</option></select></div>
+    </div>
+
+    <label for="caption">Caption (optional, blank = AI-written)</label>
+    <input id="caption" class="fa">
+    <label for="hashtags">Hashtags (optional)</label>
+    <input id="hashtags" class="fa" placeholder="#روانشناسی #رابطه">
+
+    <label for="mode">After rendering</label>
+    <select id="mode"><option value="false">Render only (review the MP4 first)</option><option value="true">Render and post to Instagram</option></select>
+
+    <button id="go">Create reel</button>
+  </div>
+
+  <div class="card status" id="statusCard" hidden><div id="status"></div></div>
+</main>
+
+<script>
+const DEFAULT_REPO = "sabaghanbarlo-hash/persian-reel-studio";
+const $ = id => document.getElementById(id);
+
+function repoPath() {
+  const h = location.hostname;
+  if (h.endsWith(".github.io")) {
+    const repo = location.pathname.split("/")[1];
+    if (repo) return h.split(".")[0] + "/" + repo;
+  }
+  return DEFAULT_REPO;
+}
+const REPO = repoPath();
+$("repoName").textContent = REPO;
+
+function store(k, v) { try { v === undefined ? localStorage.getItem(k) : localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+
+$("token").value = load("prs_token");
+if (!$("token").value) $("setup").open = true;
+$("token").addEventListener("change", () => store("prs_token", $("token").value.trim()));
+
+$("script").addEventListener("input", () => {
+  const t = $("script").value.trim();
+  if (!t || t.startsWith("{")) { $("est").textContent = "Paste the narration only (no shot list). A JSON shot list is also accepted, see README."; return; }
+  const words = t.split(/\s+/).length;
+  const sec = Math.round(words / 2.4 + 2);
+  $("est").textContent = `${words} words, roughly ${sec}s of narration (target 25-40s).` + (sec > 42 ? " Probably too long." : sec < 23 ? " Probably too short." : "");
+});
+
+async function gh(path, opts = {}) {
+  return fetch("https://api.github.com" + path, {
+    ...opts,
+    headers: {
+      Authorization: "Bearer " + $("token").value.trim(),
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json"
+    }
+  });
+}
+
+function show(html) { $("statusCard").hidden = false; $("status").innerHTML = html; }
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+$("go").addEventListener("click", async () => {
+  const token = $("token").value.trim();
+  const script = $("script").value.trim();
+  if (!token) { $("setup").open = true; return show('<span class="bad">Add your GitHub token first.</span>'); }
+  if (!script) return show('<span class="bad">Paste a script first.</span>');
+  store("prs_token", token);
+
+  const post = $("mode").value;
+  if (post === "true" && !confirm("This will publish the reel to your Instagram account. Continue?")) return;
+
+  $("go").disabled = true;
+  const t0 = Date.now();
+  show("Sending to GitHub Actions...");
+  const res = await gh(`/repos/${REPO}/actions/workflows/make-reel.yml/dispatches`, {
+    method: "POST",
+    body: JSON.stringify({ ref: "main", inputs: {
+      script, voice: $("voice").value, visuals: $("visuals").value,
+      caption: $("caption").value.trim(), hashtags: $("hashtags").value.trim(), post_to_instagram: post
+    } })
+  });
+  if (res.status !== 204) {
+    const msg = await res.text();
+    $("go").disabled = false;
+    return show('<span class="bad">GitHub rejected the request (' + res.status + ').</span><br>' + esc(msg.slice(0, 300)));
+  }
+  track(t0);
+});
+
+async function track(t0) {
+  let run = null;
+  for (let i = 0; i < 200; i++) {
+    await new Promise(r => setTimeout(r, i === 0 ? 5000 : 10000));
+    try {
+      if (!run) {
+        const r = await (await gh(`/repos/${REPO}/actions/workflows/make-reel.yml/runs?event=workflow_dispatch&per_page=5`)).json();
+        run = (r.workflow_runs || []).find(x => new Date(x.created_at).getTime() >= t0 - 15000) || null;
+        if (!run) { show("Waiting for the run to start..."); continue; }
+      } else {
+        run = await (await gh(`/repos/${REPO}/actions/runs/${run.id}`)).json();
+      }
+      let step = "";
+      const jobs = await (await gh(`/repos/${REPO}/actions/runs/${run.id}/jobs`)).json();
+      const cur = ((jobs.jobs || [])[0] || {}).steps || [];
+      const active = cur.find(s => s.status === "in_progress");
+      if (active) step = active.name;
+      const link = `<a href="${run.html_url}" target="_blank" rel="noopener">Open run</a>`;
+      if (run.status !== "completed") { show(`Working... ${esc(step)} &middot; ${link}`); continue; }
+      if (run.conclusion === "success") {
+        show(`<span class="ok">Done.</span> Download <b>reel</b> from Artifacts on the run page (it also shows the caption and Instagram link) &middot; ${link}`);
+      } else {
+        show(`<span class="bad">Run ${esc(run.conclusion)}.</span> See the logs: ${link}`);
+      }
+      break;
+    } catch (e) { show("Lost contact with GitHub, retrying..."); }
+  }
+  $("go").disabled = false;
+}
+</script>
+</body>
+</html>
