@@ -1,0 +1,21 @@
+name: Check Instagram connection
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Verify Composio key + Instagram account (posts nothing)
+        env:
+          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+          IG_ACCOUNT: ${{ vars.IG_ACCOUNT }}
+          IG_EXPECT_USERNAME: ${{ vars.IG_EXPECT_USERNAME }}
+        run: python -m reel.instagram --check

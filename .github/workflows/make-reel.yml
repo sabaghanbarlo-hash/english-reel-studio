@@ -79,11 +79,11 @@ jobs:
           path: out/
           retention-days: 14
 
-      - name: Post to Instagram
+      - name: Post to Instagram (via Composio)
         if: ${{ inputs.post_to_instagram }}
         env:
-          IG_USER_ID: ${{ secrets.IG_USER_ID }}
-          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
-          IG_GRAPH_HOST: ${{ vars.IG_GRAPH_HOST }}
+          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+          IG_ACCOUNT: ${{ vars.IG_ACCOUNT }}
+          IG_EXPECT_USERNAME: ${{ vars.IG_EXPECT_USERNAME }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/post.sh

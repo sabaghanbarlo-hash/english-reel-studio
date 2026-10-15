@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Hosts out/reel.mp4 temporarily on GitHub Pages (Instagram needs a public video URL), publishes it, then removes it.
 set -euo pipefail
-: "${IG_USER_ID:?Add the IG_USER_ID repository secret (see README)}"
-: "${IG_ACCESS_TOKEN:?Add the IG_ACCESS_TOKEN repository secret (see README)}"
+: "${COMPOSIO_API_KEY:?Add the COMPOSIO_API_KEY repository secret (see README)}"
+: "${IG_ACCOUNT:?Set the IG_ACCOUNT repository variable (see README)}"
 
 NAME="reel-${GITHUB_RUN_ID}.mp4"
 OWNER_L="$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
 URL="https://${OWNER_L}.github.io/${GITHUB_REPOSITORY#*/}/media/${NAME}"
+
+# Verify the Instagram connection BEFORE publishing anything to the repo.
+python -m reel.instagram --check
 
 git config user.name "reel-bot"
 git config user.email "reel-bot@users.noreply.github.com"

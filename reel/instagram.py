@@ -1,72 +1,159 @@
-"""Publish out/reel.mp4 (already hosted at a public URL) as an Instagram Reel via the Graph API.
+"""Publish out/reel.mp4 (already hosted at a public URL) as an Instagram Reel through Composio's MCP server.
 
-Usage: python -m reel.instagram <public_video_url>
-Env:   IG_USER_ID, IG_ACCESS_TOKEN, optional IG_GRAPH_HOST (default graph.facebook.com;
-       use graph.instagram.com if your token comes from 'Instagram API with Instagram Login')
+No Meta developer account is needed: Composio holds the Instagram connection you authorised there.
+
+Usage:  python -m reel.instagram <public_video_url>
+        python -m reel.instagram --check        (verify key + connection, post nothing)
+Env:    COMPOSIO_API_KEY            your Composio consumer key
+        IG_ACCOUNT                  alias or id of the Composio Instagram connection to use (required)
+        IG_EXPECT_USERNAME          optional safety check: abort unless the connected account has this username
 """
+import json
 import os
 import sys
-import time
 from pathlib import Path
 
 import requests
 
-VERSION = "v21.0"
+MCP_URL = "https://connect.composio.dev/mcp"
+KEY = os.environ.get("COMPOSIO_API_KEY", "").strip()
+ACCOUNT = os.environ.get("IG_ACCOUNT", "").strip()
+_state = {"session": None, "n": 0}
 
 
-def _check(r: requests.Response) -> dict:
-    try:
-        data = r.json()
-    except ValueError:
-        data = {"raw": r.text}
-    if not r.ok or "error" in data:
-        raise SystemExit(f"Instagram API error ({r.status_code}): {data}")
-    return data
-
-
-def main() -> None:
-    video_url = sys.argv[1]
-    uid, token = os.environ["IG_USER_ID"], os.environ["IG_ACCESS_TOKEN"]
-    base = f"https://{os.environ.get('IG_GRAPH_HOST', 'graph.facebook.com')}/{VERSION}"
-    caption = Path("out/caption.txt").read_text(encoding="utf-8")
-
-    container = _check(requests.post(f"{base}/{uid}/media", data={
-        "media_type": "REELS", "video_url": video_url, "caption": caption,
-        "share_to_feed": "true", "access_token": token}, timeout=60))["id"]
-    print(f"Container created: {container}")
-
-    for _ in range(60):
-        st = _check(requests.get(f"{base}/{container}", params={
-            "fields": "status_code,status", "access_token": token}, timeout=30))
-        code = st.get("status_code")
-        print(f"Processing status: {code}")
-        if code == "FINISHED":
-            break
-        if code in ("ERROR", "EXPIRED"):
-            raise SystemExit(f"Instagram could not process the video: {st}")
-        time.sleep(10)
-    else:
-        raise SystemExit("Timed out waiting for Instagram to process the video.")
-
-    media_id = _check(requests.post(f"{base}/{uid}/media_publish", data={
-        "creation_id": container, "access_token": token}, timeout=60))["id"]
-    link = _check(requests.get(f"{base}/{media_id}", params={
-        "fields": "permalink", "access_token": token}, timeout=30)).get("permalink", media_id)
-    print(f"Published: {link}")
-
-    question = Path("out/comment.txt").read_text(encoding="utf-8").strip()
-    if question:
+def _post(payload):
+    headers = {
+        "x-consumer-api-key": KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
+    if _state["session"]:
+        headers["Mcp-Session-Id"] = _state["session"]
+    r = requests.post(MCP_URL, data=json.dumps(payload), headers=headers, timeout=400)
+    if not r.ok:
+        sys.exit(f"Composio MCP returned HTTP {r.status_code}: {r.text[:500]}")
+    _state["session"] = r.headers.get("Mcp-Session-Id") or _state["session"]
+    raw = r.text.strip()
+    if not raw:
+        return None
+    if raw.startswith("{"):
+        return json.loads(raw)
+    for line in reversed([ln[5:].strip() for ln in raw.splitlines() if ln.startswith("data:")]):
         try:
-            _check(requests.post(f"{base}/{media_id}/comments", data={
-                "message": question, "access_token": token}, timeout=30))
-            print("Posted the discussion question as a comment (pin it manually in the app).")
-        except SystemExit as exc:
-            print(f"::warning::Could not post the comment: {exc}")
+            return json.loads(line)
+        except ValueError:
+            continue
+    return None
 
+
+def _rpc(method, params=None, notify=False):
+    msg = {"jsonrpc": "2.0", "method": method}
+    if params is not None:
+        msg["params"] = params
+    if not notify:
+        _state["n"] += 1
+        msg["id"] = _state["n"]
+    return _post(msg)
+
+
+def _start():
+    r = _rpc("initialize", {
+        "protocolVersion": "2025-03-26", "capabilities": {},
+        "clientInfo": {"name": "persian-reel-studio", "version": "1.0"},
+    })
+    if not r or "error" in r:
+        sys.exit(f"Composio MCP initialize failed: {str(r)[:400]}")
+    _rpc("notifications/initialized", notify=True)
+
+
+def tool(slug, args):
+    r = _rpc("tools/call", {
+        "name": "COMPOSIO_MULTI_EXECUTE_TOOL",
+        "arguments": {
+            "tools": [{"tool_slug": slug, "account": ACCOUNT, "arguments": args}],
+            "sync_response_to_workbench": False,
+        },
+    })
+    if not r or "error" in r:
+        sys.exit(f"{slug} failed: {str(r)[:500]}")
+    res = r.get("result", {})
+    text = "".join(c.get("text", "") for c in res.get("content", []) if isinstance(c, dict))
+    try:
+        top = json.loads(text)
+    except ValueError:
+        sys.exit(f"{slug}: unreadable answer from Composio: {text[:500]}")
+    items = (top.get("data") or {}).get("results") or []
+    if res.get("isError") or not top.get("successful", True) or not items:
+        err = (items[0].get("error") if items else None) or top.get("error") or top
+        sys.exit(f"{slug} failed: {str(err)[:600]}")
+    resp = items[0].get("response", {})
+    if not resp.get("successful", True):
+        sys.exit(f"{slug} failed: {str(resp.get('error') or resp)[:600]}")
+    return resp
+
+
+def find(obj, key):
+    if isinstance(obj, dict):
+        if isinstance(obj.get(key), (str, int)):
+            return str(obj[key])
+        for v in obj.values():
+            got = find(v, key)
+            if got:
+                return got
+    elif isinstance(obj, list):
+        for v in obj:
+            got = find(v, key)
+            if got:
+                return got
+    return None
+
+
+def main():
+    check = "--check" in sys.argv
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not KEY:
+        sys.exit("Add the COMPOSIO_API_KEY repository secret (see README).")
+    if not ACCOUNT:
+        sys.exit("Set the IG_ACCOUNT repository variable to the alias or id of the Composio Instagram connection "
+                 "for the Persian account. It is required so nothing is posted to the wrong account.")
+    _start()
+
+    info = tool("INSTAGRAM_GET_USER_INFO", {"ig_user_id": "me", "fields": "id,username,account_type"})
+    username = find(info.get("data"), "username") or "(unknown)"
+    print(f"Connected Instagram account: @{username}", flush=True)
+    expected = os.environ.get("IG_EXPECT_USERNAME", "").strip().lstrip("@")
+    if expected and expected.lower() != username.lower():
+        sys.exit(f"Refusing to post: connected account is @{username}, expected @{expected}.")
+    if check:
+        print("CHECK OK - nothing was posted.")
+        return
+
+    video_url = args[0]
+    caption = Path("out/caption.txt").read_text(encoding="utf-8")
+    c = tool("INSTAGRAM_POST_IG_USER_MEDIA", {
+        "ig_user_id": "me", "video_url": video_url, "media_type": "REELS",
+        "caption": caption, "share_to_feed": True,
+    })
+    container = find(c.get("data"), "id")
+    if not container:
+        sys.exit(f"No container id in Composio's answer: {str(c)[:400]}")
+    print(f"Container: {container}", flush=True)
+
+    p = tool("INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH", {
+        "ig_user_id": "me", "creation_id": container, "max_wait_seconds": 300,
+    })
+    media_id = find(p.get("data"), "id")
+    if not media_id:
+        sys.exit(f"Instagram did not confirm a published id: {str(p)[:400]}")
+    print(f"Published media id: {media_id}", flush=True)
+
+    question = Path("out/comment.txt").read_text(encoding="utf-8").strip() if Path("out/comment.txt").exists() else ""
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as f:
-            f.write(f"\n## Posted to Instagram\n{link}\n")
+            f.write(f"\n## Posted to Instagram (@{username})\nMedia id: `{media_id}`\n")
+            if question:
+                f.write(f"\nDiscussion question to pin as the first comment:\n\n> {question}\n")
 
 
 if __name__ == "__main__":
