@@ -60,7 +60,7 @@ def main() -> None:
     music = next(iter(sorted(Path("assets/music").glob("*.mp3"))), None)
     render.final_mix(joined, narration, ass, "fonts", music, total, out / "reel.mp4")
 
-    caption = env.get("CAPTION", "").strip() or plan["caption"]
+    caption = env.get("CAPTION", "").strip() or plan["caption"] or planner.hook_line(shots)
     tags = env.get("HASHTAGS", "").split() or plan["hashtags"]
     tags = [t if t.startswith("#") else "#" + t for t in tags]
     (out / "caption.txt").write_text((caption + "\n\n" + " ".join(tags)).strip(), encoding="utf-8")

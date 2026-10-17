@@ -92,7 +92,6 @@ def _llm(script: str):
             json={
                 "model": MODEL,
                 "temperature": 0.4,
-                "response_format": {"type": "json_object"},
                 "messages": [
                     {"role": "system", "content": SYSTEM},
                     {"role": "user", "content": script},
@@ -100,8 +99,13 @@ def _llm(script: str):
             },
             timeout=120,
         )
-        r.raise_for_status()
-        data = json.loads(r.json()["choices"][0]["message"]["content"])
+        if not r.ok:
+            raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
+        content = (r.json()["choices"][0]["message"].get("content") or "").strip()
+        m = re.search(r"\{.*\}", content, re.S)
+        if not m:
+            raise RuntimeError(f"no JSON in reply: {content[:200]!r}")
+        data = json.loads(m.group(0))
         joined = "".join(str(s.get("narration", "")) for s in data["shots"])
         if _norm(joined) != _norm(script):
             print("::warning::Planner changed the narration text; discarding that plan.")
@@ -146,3 +150,8 @@ def plan(raw: str) -> dict:
             return result
     print("::warning::AI shot planner unavailable - using generic prompts. Paste a JSON shot list for full control.")
     return _fallback(script)
+
+
+def hook_line(shots: list) -> str:
+    first = re.split(r"(?<=[.!\u061f?\u2026])\s+", shots[0]["narration"])[0]
+    return first[:150].strip()

@@ -1,0 +1,8 @@
+{
+  "timezone": "Asia/Tehran",
+  "slots": [
+    "13:30",
+    "21:30"
+  ],
+  "min_lead_minutes": 30
+}

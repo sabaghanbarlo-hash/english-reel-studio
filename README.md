@@ -59,3 +59,14 @@ reel/            planner, tts, visuals, subtitles, render, instagram (Composio),
 scripts/post.sh  temporary Pages hosting + publish + cleanup
 docs/index.html  web UI (GitHub Pages)
 ```
+
+## Scheduling (queue)
+
+Choose **Queue for the best time** in the UI (or `after_render = queue_for_best_time`). The finished reel waits in the repo and the **Publish queue** workflow (runs every 15 minutes) posts it at its slot.
+
+- Slots live in `queue/schedule.json`: a timezone and a list of `HH:MM` times, one reel per slot. The default is **13:30 and 21:30 Asia/Tehran**. These are reasoned starting guesses for Persian-speaking young adults (lunch break and evening scroll), **not measured data**. After a few weeks, compare against Instagram Insights (most active times / reel reach) and edit the file.
+- A new reel takes the earliest free slot at least 30 minutes away. The run summary shows the exact time.
+- GitHub's cron is not exact; posts can be several minutes late.
+- A reel is marked `publishing` and pushed *before* Instagram is called, so a crash never double-posts. Failures are **not** retried automatically (the run turns red and GitHub emails you). Check Instagram, then run **Publish queue** manually with *requeue_failed* ticked.
+- While waiting, the video sits in `docs/queue/` of this public repo, so anyone who finds the URL could see it before it is posted. It is deleted after posting, but git history keeps the file.
+- A reel can't be queued with an empty caption. If the AI planner fails and you typed none, the first sentence of your script is used.

@@ -1,0 +1,55 @@
+name: Publish queue
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      requeue_failed:
+        description: Move failed items back into the queue (check Instagram first)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: publish-queue
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Git identity
+        run: |
+          git config user.name "reel-bot"
+          git config user.email "reel-bot@users.noreply.github.com"
+
+      - name: Requeue failed items
+        if: ${{ inputs.requeue_failed }}
+        run: python3 -m reel.queue requeue
+
+      - name: Anything due?
+        id: due
+        run: python3 -m reel.queue due
+
+      - uses: actions/setup-python@v5
+        if: steps.due.outputs.due == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Publish the due reel
+        if: steps.due.outputs.due == 'true'
+        env:
+          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+          IG_ACCOUNT: ${{ vars.IG_ACCOUNT }}
+          IG_EXPECT_USERNAME: ${{ vars.IG_EXPECT_USERNAME }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pip install requests
+          python -m reel.queue publish

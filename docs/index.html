@@ -62,7 +62,7 @@
     <input id="hashtags" class="fa" placeholder="#روانشناسی #رابطه">
 
     <label for="mode">After rendering</label>
-    <select id="mode"><option value="false">Render only (review the MP4 first)</option><option value="true">Render and post to Instagram</option></select>
+    <select id="mode"><option value="render_only">Render only (review the MP4 first)</option><option value="queue_for_best_time">Queue for the best time (posts automatically)</option><option value="post_now">Post to Instagram right away</option></select>
 
     <button id="go">Create reel</button>
   </div>
@@ -123,7 +123,8 @@ $("go").addEventListener("click", async () => {
   store("prs_token", token);
 
   const post = $("mode").value;
-  if (post === "true" && !confirm("This will publish the reel to your Instagram account. Continue?")) return;
+  if (post === "post_now" && !confirm("This will publish the reel to your Instagram account right now. Continue?")) return;
+  if (post === "queue_for_best_time" && !confirm("This reel will be posted automatically at the next free slot. Continue?")) return;
 
   $("go").disabled = true;
   const t0 = Date.now();
@@ -132,7 +133,7 @@ $("go").addEventListener("click", async () => {
     method: "POST",
     body: JSON.stringify({ ref: "main", inputs: {
       script, voice: $("voice").value, visuals: $("visuals").value,
-      caption: $("caption").value.trim(), hashtags: $("hashtags").value.trim(), post_to_instagram: post
+      caption: $("caption").value.trim(), hashtags: $("hashtags").value.trim(), after_render: post
     } })
   });
   if (res.status !== 204) {
@@ -163,7 +164,7 @@ async function track(t0) {
       const link = `<a href="${run.html_url}" target="_blank" rel="noopener">Open run</a>`;
       if (run.status !== "completed") { show(`Working... ${esc(step)} &middot; ${link}`); continue; }
       if (run.conclusion === "success") {
-        show(`<span class="ok">Done.</span> Download <b>reel</b> from Artifacts on the run page (it also shows the caption and Instagram link) &middot; ${link}`);
+        show(`<span class="ok">Done.</span> Download <b>reel</b> from Artifacts on the run page (the run summary shows the queue slot or Instagram link) &middot; ${link}`);
       } else {
         show(`<span class="bad">Run ${esc(run.conclusion)}.</span> See the logs: ${link}`);
       }

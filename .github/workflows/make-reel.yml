@@ -25,10 +25,11 @@ on:
         description: Hashtags separated by spaces (blank = AI-written)
         type: string
         default: ""
-      post_to_instagram:
-        description: Post to Instagram after rendering (off = render only)
-        type: boolean
-        default: false
+      after_render:
+        description: What to do with the finished reel
+        type: choice
+        options: [render_only, queue_for_best_time, post_now]
+        default: render_only
 
 permissions:
   contents: write
@@ -79,8 +80,18 @@ jobs:
           path: out/
           retention-days: 14
 
+      - name: Add to the publishing queue
+        if: ${{ inputs.after_render == 'queue_for_best_time' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          git config user.name "reel-bot"
+          git config user.email "reel-bot@users.noreply.github.com"
+          python -m reel.queue add
+
       - name: Post to Instagram (via Composio)
-        if: ${{ inputs.post_to_instagram }}
+        if: ${{ inputs.after_render == 'post_now' }}
         env:
           COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
           IG_ACCOUNT: ${{ vars.IG_ACCOUNT }}

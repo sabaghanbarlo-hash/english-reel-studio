@@ -108,28 +108,25 @@ def find(obj, key):
     return None
 
 
-def main():
-    check = "--check" in sys.argv
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+def _connect():
     if not KEY:
         sys.exit("Add the COMPOSIO_API_KEY repository secret (see README).")
     if not ACCOUNT:
         sys.exit("Set the IG_ACCOUNT repository variable to the alias or id of the Composio Instagram connection "
                  "for the Persian account. It is required so nothing is posted to the wrong account.")
     _start()
-
     info = tool("INSTAGRAM_GET_USER_INFO", {"ig_user_id": "me", "fields": "id,username,account_type"})
     username = find(info.get("data"), "username") or "(unknown)"
     print(f"Connected Instagram account: @{username}", flush=True)
     expected = os.environ.get("IG_EXPECT_USERNAME", "").strip().lstrip("@")
     if expected and expected.lower() != username.lower():
         sys.exit(f"Refusing to post: connected account is @{username}, expected @{expected}.")
-    if check:
-        print("CHECK OK - nothing was posted.")
-        return
+    return username
 
-    video_url = args[0]
-    caption = Path("out/caption.txt").read_text(encoding="utf-8")
+
+def publish(video_url, caption):
+    """Post one Reel. Returns (username, media_id). Exits with a message on any failure."""
+    username = _connect()
     c = tool("INSTAGRAM_POST_IG_USER_MEDIA", {
         "ig_user_id": "me", "video_url": video_url, "media_type": "REELS",
         "caption": caption, "share_to_feed": True,
@@ -138,7 +135,6 @@ def main():
     if not container:
         sys.exit(f"No container id in Composio's answer: {str(c)[:400]}")
     print(f"Container: {container}", flush=True)
-
     p = tool("INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH", {
         "ig_user_id": "me", "creation_id": container, "max_wait_seconds": 300,
     })
@@ -146,8 +142,19 @@ def main():
     if not media_id:
         sys.exit(f"Instagram did not confirm a published id: {str(p)[:400]}")
     print(f"Published media id: {media_id}", flush=True)
+    return username, media_id
 
-    question = Path("out/comment.txt").read_text(encoding="utf-8").strip() if Path("out/comment.txt").exists() else ""
+
+def main():
+    if "--check" in sys.argv:
+        _connect()
+        print("CHECK OK - nothing was posted.")
+        return
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    caption = Path("out/caption.txt").read_text(encoding="utf-8")
+    username, media_id = publish(args[0], caption)
+    cpath = Path("out/comment.txt")
+    question = cpath.read_text(encoding="utf-8").strip() if cpath.exists() else ""
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as f:
