@@ -28,6 +28,11 @@
   a{color:var(--accent)}
   .check{display:flex;gap:10px;align-items:flex-start;margin-top:14px}
   .check input{width:auto;margin-top:4px}
+  .q{border-top:1px solid var(--line);padding:8px 0;font-size:14px}
+  .q:first-child{border-top:0}
+  .tag{font-size:12px;padding:2px 8px;border-radius:99px;background:#0f1419;margin-right:6px}
+  .tag.queued,.tag.publishing{color:var(--accent)} .tag.posted{color:var(--ok)} .tag.failed{color:var(--bad)}
+  .cap{direction:rtl;font-family:Vazirmatn,Inter,sans-serif;color:var(--mute);margin-top:2px}
 </style>
 </head>
 <body>
@@ -68,6 +73,10 @@
   </div>
 
   <div class="card status" id="statusCard" hidden><div id="status"></div></div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center"><b>Upcoming posts</b><a href="#" id="qRefresh">Refresh</a></div>
+    <div id="qBody" class="hint">Loading...</div>
+  </div>
 </main>
 
 <script>
@@ -173,6 +182,60 @@ async function track(t0) {
   }
   $("go").disabled = false;
 }
+
+// ---- upcoming posts (reads queue/*.json from the repo)
+async function ghRaw(path) {
+  const r = await fetch("https://api.github.com" + path, { headers: {
+    Authorization: "Bearer " + $("token").value.trim(),
+    Accept: "application/vnd.github.raw+json", "X-GitHub-Api-Version": "2022-11-28" } });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.text();
+}
+async function listJson(dir) {
+  const r = await gh(`/repos/${REPO}/contents/${dir}`);
+  if (r.status === 404) return [];
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const files = (await r.json()).filter(f => f.type === "file" && f.name.endsWith(".json") && f.name !== "schedule.json");
+  return Promise.all(files.map(async f => JSON.parse(await ghRaw(`/repos/${REPO}/contents/${f.path}`))));
+}
+function fmtTime(iso, tz) {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+}
+function qRow(item, tz, when) {
+  const row = document.createElement("div"); row.className = "q";
+  const tag = document.createElement("span"); tag.className = "tag " + item.status; tag.textContent = item.status;
+  row.append(tag, document.createTextNode(fmtTime(when, tz)));
+  const cap = document.createElement("div"); cap.className = "cap"; cap.textContent = (item.caption || "").slice(0, 90);
+  row.append(cap);
+  if (item.status === "failed" && item.error) {
+    const err = document.createElement("div"); err.className = "hint"; err.textContent = item.error.slice(0, 160); row.append(err);
+  }
+  return row;
+}
+async function loadQueue() {
+  const body = $("qBody");
+  if (!$("token").value.trim()) { body.textContent = "Add your GitHub token to see the queue."; return; }
+  body.textContent = "Loading...";
+  try {
+    let tz = "Asia/Tehran";
+    try { tz = JSON.parse(await ghRaw(`/repos/${REPO}/contents/queue/schedule.json`)).timezone || tz; } catch (e) {}
+    const [q, p] = await Promise.all([listJson("queue"), listJson("queue/posted")]);
+    q.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+    p.sort((a, b) => (b.posted_at || "").localeCompare(a.posted_at || ""));
+    body.textContent = "";
+    const head = t => { const h = document.createElement("div"); h.className = "hint"; h.textContent = t; body.append(h); };
+    head(q.length ? `Waiting (times in ${tz})` : "Nothing waiting. Queue a reel to see it here.");
+    q.forEach(i => body.append(qRow(i, tz, i.scheduled_at)));
+    if (p.length) { head("Recently posted"); p.slice(0, 5).forEach(i => body.append(qRow(i, tz, i.posted_at || i.scheduled_at))); }
+  } catch (e) {
+    body.textContent = "Could not load the queue (" + e.message + "). If this says 403 or 404, give your token Contents: Read-only access.";
+  }
+}
+const _track = track;
+track = async function (t0) { await _track(t0); loadQueue(); };
+$("qRefresh").addEventListener("click", ev => { ev.preventDefault(); loadQueue(); });
+$("token").addEventListener("change", loadQueue);
+loadQueue();
 </script>
 </body>
 </html>
