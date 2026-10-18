@@ -33,6 +33,7 @@
   .tag{font-size:12px;padding:2px 8px;border-radius:99px;background:#0f1419;margin-right:6px}
   .tag.queued,.tag.publishing{color:var(--accent)} .tag.posted{color:var(--ok)} .tag.failed{color:var(--bad)}
   .cap{direction:rtl;font-family:Vazirmatn,Inter,sans-serif;color:var(--mute);margin-top:2px}
+  video{width:100%;max-width:360px;border-radius:12px;background:#000;display:block;margin:8px 0}
 </style>
 </head>
 <body>
@@ -73,6 +74,11 @@
   </div>
 
   <div class="card status" id="statusCard" hidden><div id="status"></div></div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center"><b>Latest renders</b><a href="#" id="pRefresh">Refresh</a></div>
+    <div id="pBody" class="hint">Loading...</div>
+  </div>
+
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center"><b>Upcoming posts</b><a href="#" id="qRefresh">Refresh</a></div>
     <div id="qBody" class="hint">Loading...</div>
@@ -132,6 +138,7 @@ $("go").addEventListener("click", async () => {
   store("prs_token", token);
 
   const post = $("mode").value;
+  window.lastMode = post;
   if (post === "post_now" && !confirm("This will publish the reel to your Instagram account right now. Continue?")) return;
   if (post === "queue_for_best_time" && !confirm("This reel will be posted automatically at the next free slot. Continue?")) return;
 
@@ -173,6 +180,7 @@ async function track(t0) {
       const link = `<a href="${run.html_url}" target="_blank" rel="noopener">Open run</a>`;
       if (run.status !== "completed") { show(`Working... ${esc(step)} &middot; ${link}`); continue; }
       if (run.conclusion === "success") {
+        showPreview(run, window.lastMode);
         show(`<span class="ok">Done.</span> Download <b>reel</b> from Artifacts on the run page (the run summary shows the queue slot or Instagram link) &middot; ${link}`);
       } else {
         show(`<span class="bad">Run ${esc(run.conclusion)}.</span> See the logs: ${link}`);
@@ -205,6 +213,9 @@ function qRow(item, tz, when) {
   const row = document.createElement("div"); row.className = "q";
   const tag = document.createElement("span"); tag.className = "tag " + item.status; tag.textContent = item.status;
   row.append(tag, document.createTextNode(fmtTime(when, tz)));
+  if (item.video && item.status !== "posted") {
+    const a = document.createElement("a"); a.href = item.video.replace(/^docs\//, ""); a.target = "_blank"; a.rel = "noopener"; a.textContent = "  Watch"; row.append(a);
+  }
   const cap = document.createElement("div"); cap.className = "cap"; cap.textContent = (item.caption || "").slice(0, 90);
   row.append(cap);
   if (item.status === "failed" && item.error) {
@@ -236,6 +247,45 @@ track = async function (t0) { await _track(t0); loadQueue(); };
 $("qRefresh").addEventListener("click", ev => { ev.preventDefault(); loadQueue(); });
 $("token").addEventListener("change", loadQueue);
 loadQueue();
+
+// ---- latest renders (previews the workflow publishes to this site)
+async function urlReady(u) {
+  try { const r = await fetch(u, { method: "HEAD", cache: "no-store" }); return r.ok && (r.headers.get("content-type") || "").startsWith("video"); }
+  catch (e) { return false; }
+}
+async function loadPreviews() {
+  const body = $("pBody");
+  if (!$("token").value.trim()) { body.textContent = "Add your GitHub token to see your renders."; return; }
+  try {
+    const list = (await listJson("docs/previews")).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 6);
+    body.textContent = "";
+    if (!list.length) { body.textContent = "No renders yet. Choose Render only, create a reel, and it appears here."; return; }
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    for (const it of list) {
+      const row = document.createElement("div"); row.className = "q";
+      const when = document.createElement("div"); when.className = "hint"; when.textContent = fmtTime(it.created_at, tz);
+      row.append(when);
+      const url = "previews/" + it.id + ".mp4";
+      if (await urlReady(url)) {
+        const v = document.createElement("video"); v.controls = true; v.preload = "metadata"; v.playsInline = true; v.src = url; row.append(v);
+        const dl = document.createElement("a"); dl.href = url; dl.download = it.id + ".mp4"; dl.textContent = "Download"; row.append(dl);
+      } else {
+        const w = document.createElement("div"); w.className = "hint"; w.textContent = "Still publishing to the site. Refresh in a minute."; row.append(w);
+      }
+      const cap = document.createElement("div"); cap.className = "cap"; cap.textContent = it.caption || "(no caption)"; row.append(cap);
+      body.append(row);
+    }
+  } catch (e) { body.textContent = "Could not load renders (" + e.message + ")."; }
+}
+async function waitForPreview(runId) {
+  const url = "previews/reel-" + runId + ".mp4";
+  $("pBody").textContent = "Reel rendered. Publishing the preview to the site (about a minute)...";
+  for (let i = 0; i < 36; i++) { if (await urlReady(url)) break; await new Promise(r => setTimeout(r, 10000)); }
+  loadPreviews();
+}
+function showPreview(run, mode) { if (mode === "render_only") waitForPreview(run.id); }
+$("pRefresh").addEventListener("click", ev => { ev.preventDefault(); loadPreviews(); });
+loadPreviews();
 </script>
 </body>
 </html>

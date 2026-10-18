@@ -5,6 +5,7 @@
   python -m reel.queue publish   publish the oldest due item
   python -m reel.queue requeue   move failed items back into the queue
   python -m reel.queue list      show the queue
+  python -m reel.queue preview   publish out/reel.mp4 to the site's Latest renders (keeps the newest 6)
 
 Slots come from queue/schedule.json (timezone + list of HH:MM times). Each slot holds one reel.
 Safety: an item is marked "publishing" and pushed BEFORE Instagram is called, so a crash can never
@@ -210,13 +211,44 @@ def cmd_requeue():
     push("queue: requeue failed items")
 
 
+PREVIEWS = Path("docs/previews")
+KEEP_PREVIEWS = 6
+
+
+def cmd_preview():
+    video = Path("out/reel.mp4")
+    if not video.exists():
+        sys.exit("out/reel.mp4 not found.")
+    cap, cq = Path("out/caption.txt"), Path("out/comment.txt")
+    rid = f"reel-{os.environ.get('RUN_ID') or int(time.time())}"
+    PREVIEWS.mkdir(parents=True, exist_ok=True)
+    shutil.copy(video, PREVIEWS / f"{rid}.mp4")
+    meta = {"id": rid, "created_at": iso(now()),
+            "caption": cap.read_text(encoding="utf-8").strip() if cap.exists() else "",
+            "question": cq.read_text(encoding="utf-8").strip() if cq.exists() else ""}
+    (PREVIEWS / f"{rid}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def num(stem):
+        tail = stem.split("-")[-1]
+        return int(tail) if tail.isdigit() else 0
+
+    stems = sorted({p.stem for p in PREVIEWS.glob("reel-*.json")}, key=num, reverse=True)
+    for stem in stems[KEEP_PREVIEWS:]:
+        (PREVIEWS / f"{stem}.mp4").unlink(missing_ok=True)
+        (PREVIEWS / f"{stem}.json").unlink(missing_ok=True)
+    push(f"preview: {rid}")
+    request_pages_build()
+    note("## Preview ready\nOpen the site and look under **Latest renders** (it appears about a minute after this run ends).")
+
+
 def cmd_list():
     for i in items():
         print(i["scheduled_at"], i["status"], i["id"], (i.get("error") or ""))
 
 
 if __name__ == "__main__":
-    cmds = {"add": cmd_add, "due": cmd_due, "publish": cmd_publish, "requeue": cmd_requeue, "list": cmd_list}
+    cmds = {"add": cmd_add, "due": cmd_due, "publish": cmd_publish, "requeue": cmd_requeue, "list": cmd_list,
+            "preview": cmd_preview}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         sys.exit(__doc__)
     cmds[sys.argv[1]]()
