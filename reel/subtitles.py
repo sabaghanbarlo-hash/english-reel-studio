@@ -1,4 +1,5 @@
-"""Persian subtitles as an ASS file (libass shapes RTL text). Kept clear of Instagram's UI zones."""
+"""Typewriter subtitles: each word appears exactly when the voice says it (ASS, RTL-safe, clear of Instagram UI)."""
+import re
 
 HEADER = """[Script Info]
 ScriptType: v4.00+
@@ -16,47 +17,62 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 RLM = "\u200f"
+_END = re.compile(r"[.!\u061f?\u2026]$")
+_TRAIL = re.compile(r"[\u00bb\"')\]]+$")
+HIDE, SHOW = "{\\alpha&HFF&}", "{\\alpha&H00&}"
 
 
-def _t(sec: float) -> str:
-    cs = int(round(sec * 100))
+def _t(sec):
+    cs = int(round(max(0.0, sec) * 100))
     h, cs = divmod(cs, 360000)
     m, cs = divmod(cs, 6000)
     s, cs = divmod(cs, 100)
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def chunk(text: str, max_chars: int = 34) -> list:
-    cues, cur = [], []
-    for w in text.split():
-        if cur and len(" ".join(cur + [w])) > max_chars:
-            cues.append(cur)
-            cur = [w]
-        else:
-            cur.append(w)
+def cues(words, max_chars=34, pause=0.45):
+    out, cur = [], []
+    for w in words:
+        if cur:
+            joined = " ".join(x["shown"] for x in cur + [w])
+            ended = bool(_END.search(_TRAIL.sub("", cur[-1]["shown"])))
+            if len(joined) > max_chars or w["start"] - cur[-1]["end"] > pause or ended:
+                out.append(cur)
+                cur = []
+        cur.append(w)
     if cur:
-        cues.append(cur)
-    return cues
+        out.append(cur)
+    return out
 
 
-def _two_lines(words: list, line_max: int = 20) -> str:
-    joined = " ".join(words)
-    if len(joined) <= line_max or len(words) < 2:
-        return RLM + joined
-    best = min(range(1, len(words)), key=lambda i: abs(len(" ".join(words[:i])) - len(" ".join(words[i:]))))
-    return RLM + " ".join(words[:best]) + "\\N" + RLM + " ".join(words[best:])
+def _split(shown, line_max=20):
+    if len(" ".join(shown)) <= line_max or len(shown) < 2:
+        return len(shown)
+    return min(range(1, len(shown)), key=lambda i: abs(len(" ".join(shown[:i])) - len(" ".join(shown[i:]))))
 
 
-def build(shots: list, starts: list, audio_durs: list) -> str:
+def _text(cue, visible):
+    shown = [w["shown"].replace("{", "").replace("}", "") for w in cue]
+    marked = [wd if i < visible else HIDE + wd + SHOW for i, wd in enumerate(shown)]
+    cut = _split(shown)
+    if cut >= len(shown):
+        return RLM + " ".join(marked)
+    return RLM + " ".join(marked[:cut]) + "\\N" + RLM + " ".join(marked[cut:])
+
+
+def build(words):
+    """Fixed layout per cue; words not yet spoken are transparent, so nothing jumps around."""
     lines = [HEADER]
-    for shot, t0, ad in zip(shots, starts, audio_durs):
-        cues = chunk(shot["narration"])
-        weights = [max(1, len(" ".join(c))) for c in cues]
-        total = sum(weights)
-        span = max(0.5, ad - 0.05)
-        t = t0 + 0.05
-        for cue, w in zip(cues, weights):
-            d = span * w / total
-            lines.append(f"Dialogue: 0,{_t(t)},{_t(t + d)},Main,,0,0,0,,{_two_lines(cue)}\n")
-            t += d
+    cs = cues(words)
+    for ci, cue in enumerate(cs):
+        end = cue[-1]["end"] + 0.35
+        if ci + 1 < len(cs):
+            end = min(end, cs[ci + 1][0]["start"] - 0.03)
+        end = max(end, cue[-1]["start"] + 0.2)
+        for k, w in enumerate(cue):
+            t0 = max(0.0, w["start"] - 0.04)
+            t1 = cue[k + 1]["start"] - 0.04 if k + 1 < len(cue) else end
+            if t1 <= t0:
+                t1 = t0 + 0.05
+            lines.append(f"Dialogue: 0,{_t(t0)},{_t(t1)},Main,,0,0,0,,{_text(cue, k + 1)}\n")
     return "".join(lines)

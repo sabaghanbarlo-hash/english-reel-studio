@@ -1,4 +1,4 @@
-"""Orchestrator: script -> plan -> narration -> visuals -> subtitles -> out/reel.mp4 (+ caption files).
+"""Orchestrator: script -> plan -> narration (with word timings) -> visuals -> typewriter subtitles -> out/reel.mp4.
 
 Run from the repo root:  python -m reel.run   (inputs come from environment variables, see the workflow)
 """
@@ -6,7 +6,7 @@ import hashlib
 import os
 from pathlib import Path
 
-from . import planner, render, subtitles, tts, visuals
+from . import narration, planner, render, subtitles, tts, visuals
 
 
 def main() -> None:
@@ -22,21 +22,10 @@ def main() -> None:
     print(f"Plan source: {plan['source']} | {len(shots)} shots")
     seed = int(hashlib.sha256("".join(s["narration"] for s in shots).encode()).hexdigest()[:6], 16)
 
-    wavs, shot_durs, audio_durs = [], [], []
-    for i, s in enumerate(shots):
-        mp3, wav = work / f"seg{i}.mp3", work / f"seg{i}.wav"
-        tts.synth(s.get("spoken") or s["narration"], voice, mp3, s.get("delivery"))
-        ad = render.duration(mp3)
-        pad = 0.18 if i < len(shots) - 1 else 0.8
-        render.pad_audio(mp3, wav, pad)
-        wavs.append(wav)
-        audio_durs.append(ad)
-        shot_durs.append(ad + pad)
-    total = sum(shot_durs)
+    nar = narration.build(plan, voice, work)
+    shot_durs, total = nar["shot_durs"], nar["total"]
     if total > 90:
         raise SystemExit(f"Reel would be {total:.0f}s - Instagram Reels max is 90s. Shorten the script.")
-    narration = work / "narration.wav"
-    render.concat_audio(wavs, narration)
 
     clips = []
     last_vis = None
@@ -56,15 +45,11 @@ def main() -> None:
     joined = work / "joined.mp4"
     render.join_clips(clips, shot_durs, joined)
 
-    starts, t = [], 0.0
-    for d in shot_durs:
-        starts.append(t)
-        t += d
     ass = work / "subs.ass"
-    ass.write_text(subtitles.build(shots, starts, audio_durs), encoding="utf-8")
+    ass.write_text(subtitles.build(nar["words"]), encoding="utf-8")
 
     music = next(iter(sorted(Path("assets/music").glob("*.mp3"))), None)
-    render.final_mix(joined, narration, ass, "fonts", music, total, out / "reel.mp4")
+    render.final_mix(joined, nar["wav"], ass, "fonts", music, total, out / "reel.mp4", pad=env.get("PAD", "1") != "0")
 
     caption = env.get("CAPTION", "").strip() or plan["caption"] or planner.hook_line(shots)
     tags = env.get("HASHTAGS", "").split() or plan["hashtags"]
