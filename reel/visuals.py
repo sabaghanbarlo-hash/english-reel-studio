@@ -17,7 +17,7 @@ import requests
 def _pollinations(prompt: str, out: Path, seed: int):
     url = (
         "https://image.pollinations.ai/prompt/" + quote(prompt[:900])
-        + f"?width=1080&height=1920&seed={seed}&model=flux&nologo=true"
+        + f"?width=864&height=1536&seed={seed}&model=flux&nologo=true"
     )
     for attempt in range(4):
         try:
@@ -61,7 +61,7 @@ def _pexels(query: str, out: Path, index: int):
 
 
 def get_visual(provider: str, shot: dict, index: int, work: Path, plan: dict, seed: int):
-    full_prompt = f"{plan['style']}. {plan['character_sheet']}. {shot['prompt']}"
+    full_prompt = f"{shot['prompt']}. {plan['character_sheet']}. {plan['style']}"
     if provider == "pexels":
         got = _pexels(shot["stock_query"], work / f"shot{index}.mp4", index)
         if got:

@@ -25,9 +25,9 @@ def main() -> None:
     wavs, shot_durs, audio_durs = [], [], []
     for i, s in enumerate(shots):
         mp3, wav = work / f"seg{i}.mp3", work / f"seg{i}.wav"
-        tts.synth(s["narration"], voice, mp3)
+        tts.synth(s.get("spoken") or s["narration"], voice, mp3, s.get("delivery"))
         ad = render.duration(mp3)
-        pad = 0.45 if i < len(shots) - 1 else 0.8
+        pad = 0.18 if i < len(shots) - 1 else 0.8
         render.pad_audio(mp3, wav, pad)
         wavs.append(wav)
         audio_durs.append(ad)

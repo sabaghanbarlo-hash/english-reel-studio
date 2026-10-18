@@ -5,7 +5,7 @@ from pathlib import Path
 
 W, H, FPS = 1080, 1920, 30
 XFADE = 0.3
-GRADE = "vignette=PI/6,noise=alls=5:allf=t,eq=contrast=1.04:saturation=0.92"
+GRADE = "unsharp=5:5:0.6,vignette=PI/6,noise=alls=7:allf=t,eq=contrast=1.06:saturation=0.9"
 ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-an"]
 
 
@@ -32,6 +32,24 @@ def concat_audio(wavs: list, out: Path) -> None:
     run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", out])
 
 
+def _motion(idx: int, frames: int):
+    """Seven different camera moves so consecutive shots never feel identical."""
+    p = f"(on/{frames})"
+    cx, cy = "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
+    kinds = [
+        (f"1.0+0.16*{p}", cx, cy),                                  # push in
+        ("1.14", f"(iw-iw/zoom)*{p}", cy),                          # pan right
+        (f"1.16-0.16*{p}", cx, cy),                                 # pull out
+        ("1.14", f"(iw-iw/zoom)*(1-{p})", cy),                      # pan left
+        ("1.14", cx, f"(ih-ih/zoom)*(1-{p})"),                      # tilt up
+        (f"1.0+0.12*{p}", f"(iw-iw/zoom)*{p}", f"(ih-ih/zoom)*{p}"),  # diagonal push
+        ("1.14", cx, f"(ih-ih/zoom)*{p}"),                          # tilt down
+    ]
+    z, x, y = kinds[idx % len(kinds)]
+    sway = "+sin(on/23)*5"  # slight handheld drift
+    return z, f"max(0,min(iw-iw/zoom,{x}{sway}))", f"max(0,min(ih-ih/zoom,{y}))"
+
+
 def make_clip(visual, dur: float, idx: int, out: Path) -> None:
     frames = max(2, int(round(dur * FPS)))
     if visual is None:
@@ -44,11 +62,10 @@ def make_clip(visual, dur: float, idx: int, out: Path) -> None:
             "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps={FPS},{GRADE},setsar=1",
             *ENC, out])
         return
-    step = 0.14 / frames
-    z = f"min(zoom+{step:.6f},1.15)" if idx % 2 == 0 else f"if(eq(on,0),1.15,max(zoom-{step:.6f},1.0))"
+    z, x, y = _motion(idx, frames)
     vf = (
-        f"scale=1620:2880:force_original_aspect_ratio=increase,crop=1620:2880,"
-        f"zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s={W}x{H}:fps={FPS},"
+        f"scale=2160:3840:flags=lanczos:force_original_aspect_ratio=increase,crop=2160:3840,"
+        f"zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={W}x{H}:fps={FPS},"
         f"{GRADE},setsar=1"
     )
     run(["ffmpeg", "-y", "-i", path, "-vf", vf, "-frames:v", frames, *ENC, out])
