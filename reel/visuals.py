@@ -14,19 +14,30 @@ from urllib.parse import quote
 import requests
 
 
+_DEADLINE = time.time() + 1500  # stop waiting on the free tier after 25 minutes in total
+
+
 def _pollinations(prompt: str, out: Path, seed: int):
     url = (
         "https://image.pollinations.ai/prompt/" + quote(prompt[:900])
         + f"?width=864&height=1536&seed={seed}&model=flux&nologo=true"
     )
-    for attempt in range(4):
+    for attempt in range(8):
+        if time.time() > _DEADLINE:
+            return None
         try:
             r = requests.get(url, timeout=150)
             if r.ok and r.headers.get("content-type", "").startswith("image") and len(r.content) > 5000:
                 out.write_bytes(r.content)
                 return out, "image"
-        except requests.RequestException:
-            pass
+            if r.status_code in (402, 429):
+                wait = min(int(r.headers.get("Retry-After", "45")) + 2, 90)
+                print(f"Pollinations free limit (1 image / 45 s); waiting {wait}s (attempt {attempt + 1})", flush=True)
+                time.sleep(wait)
+                continue
+            print(f"::warning::Pollinations image: HTTP {r.status_code} {r.text[:120]!r}")
+        except requests.RequestException as exc:
+            print(f"::warning::Pollinations image request failed: {exc!r}")
         time.sleep(6 * (attempt + 1))
     return None
 

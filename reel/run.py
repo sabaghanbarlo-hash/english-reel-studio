@@ -39,10 +39,16 @@ def main() -> None:
     render.concat_audio(wavs, narration)
 
     clips = []
+    last_vis = None
     for i, s in enumerate(shots):
         vis = visuals.get_visual(provider, s, i, work, plan, seed)
-        if vis is None:
+        if vis is None and last_vis is not None:
+            print(f"::warning::No new picture for shot {i + 1}; reusing the previous one with a different camera move.")
+            vis = last_vis
+        elif vis is None:
             print(f"::warning::No visual for shot {i + 1}; using a dark placeholder.")
+        else:
+            last_vis = vis
         clip = work / f"clip{i}.mp4"
         extra = render.XFADE if i < len(shots) - 1 else 0.0
         render.make_clip(vis, shot_durs[i] + extra, i, clip)

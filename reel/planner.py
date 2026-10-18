@@ -33,7 +33,7 @@ SCENES = [
 ]
 
 SYSTEM = """You are the shot planner for a faceless Persian Instagram account about relationship psychology.
-Split the user's Persian narration into 6-12 consecutive shots for a vertical 9:16 reel. Each shot's narration is one short phrase or sentence (about 3 seconds spoken, 6-14 words) so the picture changes every few seconds.
+Split the user's Persian narration into 6-10 consecutive shots for a vertical 9:16 reel. Each shot's narration is one short phrase or sentence (about 3 seconds spoken, 6-14 words) so the picture changes every few seconds.
 Return ONLY a JSON object:
 {"character_sheet": "...", "shots": [{"narration": "...", "spoken": "...", "delivery": "...", "prompt": "...", "stock_query": "..."}], "caption": "...", "hashtags": ["#..."], "pinned_question": "..."}
 Rules:
@@ -198,8 +198,8 @@ def _clauses(script: str) -> list:
             merged[-1] += " " + c
         else:
             merged.append(c)
-    if len(merged) > 12:
-        size = -(-len(merged) // 12)
+    if len(merged) > 10:
+        size = -(-len(merged) // 10)
         merged = [" ".join(merged[i:i + size]) for i in range(0, len(merged), size)]
     return merged or [script]
 
