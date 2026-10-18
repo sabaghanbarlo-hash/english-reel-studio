@@ -5,8 +5,8 @@ from pathlib import Path
 
 W, H, FPS = 1080, 1920, 30
 XFADE = 0.3
-GRADE = "unsharp=5:5:0.6,vignette=PI/6,noise=alls=7:allf=t,eq=contrast=1.06:saturation=0.9"
-ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-an"]
+GRADE = "unsharp=5:5:0.6,vignette=PI/6,noise=alls=4:allf=u,eq=contrast=1.06:saturation=0.9"
+ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an"]
 
 
 def run(cmd) -> None:
@@ -101,7 +101,7 @@ def final_mix(video, narration, subs, fonts, music, total: float, out) -> None:
         audio = f"[1:a]{fade_out},loudnorm=I=-16:TP=-1.5:LRA=11[a]"
     video_chain = f"[0:v]ass={subs}:fontsdir={fonts}[v]"
     cmd += ["-filter_complex", f"{video_chain};{audio}", "-map", "[v]", "-map", "[a]",
-            "-t", f"{total:.3f}", "-r", FPS, "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+            "-t", f"{total:.3f}", "-r", FPS, "-c:v", "libx264", "-preset", "medium", "-crf", "23", "-maxrate", "6M", "-bufsize", "12M",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-ar", "44100",
             "-movflags", "+faststart", out]
     run(cmd)

@@ -70,6 +70,7 @@ def main() -> None:
         "## Reel rendered",
         f"- Length: **{total:.1f}s** ({'inside' if 25 <= total <= 40 else 'OUTSIDE'} the 25-40s target)",
         f"- Shots: {len(shots)} | planner: `{plan['source']}` | visuals: `{provider}` | voice: `{voice}`",
+        f"- File size: **{(out / 'reel.mp4').stat().st_size / 1e6:.1f} MB**",
         "- Download the MP4 from this run's **Artifacts**.",
     ]
     if plan["source"] == "fallback":

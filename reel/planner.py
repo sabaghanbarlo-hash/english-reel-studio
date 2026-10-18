@@ -97,27 +97,35 @@ def _normalize(data: dict, source: str) -> dict:
     }
 
 
+_ENDPOINTS = (
+    (MODELS_URL, MODEL),
+    ("https://models.inference.ai.azure.com/chat/completions", "gpt-4o-mini"),
+)
+
+
 def _chat_github(system: str, user: str):
     token = os.environ.get("GITHUB_TOKEN")
     if not token:
         return None
-    try:
-        r = requests.post(
-            MODELS_URL,
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
-                     "Content-Type": "application/json"},
-            json={"model": MODEL, "temperature": 0.4, "max_tokens": 6000,
-                  "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
-            timeout=120,
-        )
-        ctype = r.headers.get("content-type", "")
-        if not r.ok or "json" not in ctype:
-            print(f"::warning::GitHub Models: HTTP {r.status_code} {ctype} body={r.text[:300]!r}")
-            return None
-        return r.json()["choices"][0]["message"].get("content") or ""
-    except Exception as exc:
-        print(f"::warning::GitHub Models call failed: {exc!r}")
-        return None
+    for url, model in _ENDPOINTS:
+        try:
+            r = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                         "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json"},
+                json={"model": model, "temperature": 0.4, "max_tokens": 6000,
+                      "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
+                timeout=120,
+            )
+            ctype = r.headers.get("content-type", "")
+            if r.ok and "json" in ctype:
+                content = r.json()["choices"][0]["message"].get("content") or ""
+                if content:
+                    return content
+            print(f"::warning::{url}: HTTP {r.status_code} {ctype} body={r.text[:300]!r}")
+        except Exception as exc:
+            print(f"::warning::{url} failed: {exc!r}")
+    return None
 
 
 def _chat_pollinations(system: str, user: str):
@@ -126,7 +134,7 @@ def _chat_pollinations(system: str, user: str):
         try:
             r = requests.post(
                 "https://text.pollinations.ai/openai",
-                json={"model": "openai", "temperature": 0.4, "max_tokens": 6000,
+                json={"model": "openai", "temperature": 0.4, "max_tokens": 6000, "reasoning_effort": "low",
                       "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
                 timeout=180,
             )

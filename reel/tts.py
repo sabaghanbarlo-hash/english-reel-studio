@@ -8,11 +8,11 @@ import edge_tts
 
 VOICES = {"female": "fa-IR-DilaraNeural", "male": "fa-IR-FaridNeural"}
 DELIVERY = {  # (rate, pitch)
-    "hook": ("-8%", "-3Hz"),
-    "tense": ("-4%", "-2Hz"),
-    "calm": ("-7%", "+0Hz"),
-    "warm": ("-8%", "+2Hz"),
-    "reflective": ("-12%", "-2Hz"),
+    "hook": ("-6%", "-3Hz"),
+    "tense": ("-2%", "-2Hz"),
+    "calm": ("-4%", "+0Hz"),
+    "warm": ("-6%", "+2Hz"),
+    "reflective": ("-9%", "-2Hz"),
 }
 
 
@@ -21,7 +21,7 @@ async def _save(text: str, voice: str, rate: str, pitch: str, out: str) -> None:
 
 
 def synth(text: str, voice: str, out, delivery=None) -> None:
-    rate, pitch = DELIVERY.get(delivery or "", ("-6%", "+0Hz"))
+    rate, pitch = DELIVERY.get(delivery or "", ("-4%", "+0Hz"))
     last = None
     for _ in range(3):
         try:

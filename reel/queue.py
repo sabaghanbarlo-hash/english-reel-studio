@@ -128,6 +128,8 @@ def cmd_add():
     video = Path("out/reel.mp4")
     if not video.exists():
         sys.exit("out/reel.mp4 not found.")
+    if video.stat().st_size > 95_000_000:
+        sys.exit(f"reel.mp4 is {video.stat().st_size / 1e6:.0f} MB; GitHub rejects files over 100 MB.")
     caption = Path("out/caption.txt").read_text(encoding="utf-8").strip()
     if not caption:
         sys.exit("Refusing to queue a reel with an empty caption.")
@@ -219,6 +221,8 @@ def cmd_preview():
     video = Path("out/reel.mp4")
     if not video.exists():
         sys.exit("out/reel.mp4 not found.")
+    if video.stat().st_size > 95_000_000:
+        sys.exit(f"reel.mp4 is {video.stat().st_size / 1e6:.0f} MB; GitHub rejects files over 100 MB.")
     cap, cq = Path("out/caption.txt"), Path("out/comment.txt")
     rid = f"reel-{os.environ.get('RUN_ID') or int(time.time())}"
     PREVIEWS.mkdir(parents=True, exist_ok=True)
