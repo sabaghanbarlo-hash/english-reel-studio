@@ -1,0 +1,32 @@
+name: Test render (offline)
+
+# Renders a full stickman reel with a silent mock voice: no keys, no network services.
+# Handy after changing anything in reel/stickman.py. The MP4 is attached as an artifact.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install -r requirements.txt
+      - name: Caption font
+        run: |
+          mkdir -p fonts
+          curl -fsSL -o fonts/Poppins-ExtraBold.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-ExtraBold.ttf" || true
+      - run: python scripts/test_render.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-reel
+          path: out/reel.mp4
+          retention-days: 7

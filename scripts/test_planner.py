@@ -4,13 +4,18 @@ import sys
 sys.path.insert(0, ".")
 from reel import planner  # noqa: E402
 
-SCRIPT = "\u0633\u06a9\u0648\u062a\u0650 \u0628\u0639\u062f \u0627\u0632 \u0628\u062d\u062b\u060c \u0647\u0645\u06cc\u0634\u0647 \u06cc\u0639\u0646\u06cc \u0628\u06cc\u200c\u0627\u0647\u0645\u06cc\u062a\u06cc \u0646\u06cc\u0633\u062a. \u0648\u0633\u0637 \u0628\u062d\u062b\u060c \u06cc\u06a9\u06cc\u200c\u062a\u0648\u0646 \u0646\u0627\u06af\u0647\u0627\u0646 \u0633\u0627\u06a9\u062a \u0645\u06cc\u200c\u0634\u0647. \u0627\u0648\u0646 \u06cc\u06a9\u06cc \u0641\u06a9\u0631 \u0645\u06cc\u200c\u06a9\u0646\u0647: \u00ab\u067e\u0633 \u0628\u0631\u0627\u0645 \u0645\u0647\u0645 \u0646\u06cc\u0633\u062a.\u00bb \u0648\u0644\u06cc \u06af\u0627\u0647\u06cc \u0645\u0627\u062c\u0631\u0627 \u06cc\u0647 \u0686\u06cc\u0632 \u062f\u06cc\u06af\u0647\u200c\u0633\u062a. \u0648\u0642\u062a\u06cc \u0628\u062d\u062b \u0628\u0627\u0644\u0627 \u0645\u06cc\u200c\u06af\u06cc\u0631\u0647\u060c \u0636\u0631\u0628\u0627\u0646 \u0642\u0644\u0628 \u0628\u0627\u0644\u0627 \u0645\u06cc\u200c\u0631\u0647 \u0648 \u0645\u063a\u0632 \u062f\u06cc\u06af\u0647 \u0646\u0645\u06cc\u200c\u062a\u0648\u0646\u0647 \u062e\u0648\u0628 \u06af\u0648\u0634 \u0628\u062f\u0647 \u06cc\u0627 \u062d\u0631\u0641 \u0628\u0632\u0646\u0647."
+SCRIPT = (
+    "Your brain hates unfinished things. Psychologists call it the Zeigarnik effect: open tasks keep nagging at "
+    "your mind until you close them. That is why you replay an argument at 2 a.m. The fix is surprisingly simple. "
+    "Write down exactly what is unresolved, and the next step you will take. "
+    "Your mind relaxes once it trusts there is a plan. What is the one thing you keep carrying around?"
+)
 
 plan = planner._plan_llm(SCRIPT)
 if not plan:
     sys.exit("AI planner unavailable (see warnings above).")
-print("SOURCE:", plan["source"], "| shots:", len(plan["shots"]))
-print("CHARACTER SHEET:", plan["character_sheet"])
+print("SOURCE:", plan["source"], "| scenes:", len(plan["shots"]))
 print("CAPTION:", plan["caption"], plan["hashtags"])
+print("QUESTION:", plan["pinned_question"])
 for s in plan["shots"]:
-    print("-", s["delivery"], "|", s["narration"], "||", s["prompt"][:140])
+    print("-", s["delivery"], "|", s["scene"], "/", s["pose"], "/", s["emotion"], "|", repr(s["label"]), "|", s["narration"])

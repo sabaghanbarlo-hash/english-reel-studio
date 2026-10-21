@@ -1,8 +1,8 @@
 {
-  "timezone": "Asia/Tehran",
+  "timezone": "America/New_York",
   "slots": [
-    "13:30",
-    "21:30"
+    "12:30",
+    "20:00"
   ],
   "min_lead_minutes": 30
 }

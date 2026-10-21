@@ -1,7 +1,8 @@
-"""Turn a pasted Persian script into a shot plan: narration slices, TTS text, delivery, English visual prompts.
+"""Turn a pasted English script into a scene plan for the stickman explainer.
 
-Input can be plain Persian narration (planned by an LLM, with a safe offline fallback) or a JSON object.
-The LLM may only choose where to cut: the narration must come back word-for-word, otherwise the plan is discarded.
+Input can be plain English narration (planned by an LLM, with a safe offline fallback) or a JSON object.
+The LLM may only choose where to cut and which prop / pose / emotion each scene gets: the narration must
+come back word-for-word, otherwise the plan is discarded and a plain sentence splitter is used.
 """
 import json
 import os
@@ -10,42 +11,27 @@ import time
 
 import requests
 
+from .vocab import EMOTIONS, NEUTRAL, POSES, PROPS, emotion_for, guess_prop
+
 MODELS_URL = "https://models.github.ai/inference/chat/completions"
 MODEL = os.environ.get("PLANNER_MODEL", "openai/gpt-4.1-mini")
 DELIVERIES = ("hook", "tense", "calm", "warm", "reflective")
 
-DEFAULT_STYLE = (
-    "photorealistic cinematic film still, 35mm, anamorphic lens, shallow depth of field, soft film grain, "
-    "moody teal and warm amber colour grade, no faces, no text, no watermark"
-)
-FALLBACK_CHARACTER = (
-    "a quiet modern apartment at night, warm lamp light against cool blue shadows, one consistent muted teal-and-amber palette"
-)
-SCENES = [
-    "an empty chair beside a rain-streaked window at night, warm lamp glow, no people",
-    "two tea cups on a wooden table, steam rising, soft window light, no people",
-    "close-up of a person's hands nervously clasped on their lap, shallow depth of field, faces out of frame",
-    "silhouette of a person standing at a balcony door, blurred city lights behind, back to camera",
-    "a phone lying face-down on a table in a dim room, cool light from a window",
-    "a half-open door with warm light spilling into a dark hallway, no people",
-    "rain running down a window with blurred city lights, moody and quiet",
-    "two long shadows on a living-room wall in evening light, no faces visible",
-]
-
-SYSTEM = """You are the shot planner for a faceless Persian Instagram account about relationship psychology.
-Split the user's Persian narration into 6-10 consecutive shots for a vertical 9:16 reel. Each shot's narration is one short phrase or sentence (about 3 seconds spoken, 6-14 words) so the picture changes every few seconds.
+SYSTEM = f"""You are the scene planner for a faceless Instagram account that explains psychology with an animated stickman.
+Split the user's English narration into 6-10 consecutive scenes for a vertical 9:16 reel. Each scene's narration is one short phrase or sentence (about 3 seconds spoken, 6-14 words) so the picture changes every few seconds.
 Return ONLY a JSON object:
-{"character_sheet": "...", "shots": [{"narration": "...", "spoken": "...", "delivery": "...", "prompt": "...", "stock_query": "..."}], "caption": "...", "hashtags": ["#..."], "pinned_question": "..."}
+{{"shots": [{{"narration": "...", "spoken": "...", "delivery": "...", "scene": "...", "pose": "...", "emotion": "...", "label": "..."}}], "caption": "...", "hashtags": ["#..."], "pinned_question": "..."}}
 Rules:
 - narration values concatenated in order must reproduce the user's text EXACTLY (only choose where to cut).
 - spoken: the same words in the same order, lightly prepared for a text-to-speech voice: add commas or ellipses where a human would pause. Never add, drop or change words.
-- delivery: one of hook, tense, calm, warm, reflective.
-- NEVER show faces. Use silhouettes, backs of heads, hands, over-the-shoulder views, shadows on walls, and objects or places (phone face-down on a table, two tea cups, an empty chair, a half-open door, rain on a window, city lights at night). One consistent location, time of day and colour palette across all shots; describe them once in character_sheet.
-- prompt: English, max 60 words: subject, composition, light, lens, mood. Photorealistic cinematic still. No text, signs or logos. No celebrities.
-- stock_query: 2-4 English words.
-- caption: short Persian caption. hashtags: 5-8 Persian. pinned_question: one thoughtful Persian question. Never invent statistics, studies or quotes."""
+- delivery: one of {", ".join(DELIVERIES)}.
+- scene: the prop drawn above the stickman. Pick the one that best illustrates the sentence, one of: {", ".join(PROPS)}. Avoid using the same prop twice in a row.
+- pose: how the stickman moves, one of: {", ".join(POSES)}. Use "point" when referring to the prop, "think" for questions, "shrug" for uncertainty, "excited" for good news, "sad" for pain, "stop" for warnings, "talk" otherwise.
+- emotion: the stickman's face, one of: {", ".join(EMOTIONS)}.
+- label: 1-3 word on-screen keyword for the scene in plain English (e.g. "Attachment", "The gap"), or an empty string. No emoji.
+- caption: short English caption, hook first. hashtags: 6-10 English hashtags. pinned_question: one thoughtful question that invites comments. Never invent statistics, studies or quotes."""
 
-_PUNCT = re.compile(r"[\s\.,\u060c\u061b\u2026!\u061f\?\u200c:;\"\u00ab\u00bb\-\u2014()]+")
+_PUNCT = re.compile(r"[\s\.,!\?…:;\"'“”‘’\-—–()]+")
 
 
 def clean(text: str) -> str:
@@ -55,7 +41,7 @@ def clean(text: str) -> str:
 
 
 def _strip(s: str) -> str:
-    return _PUNCT.sub("", s)
+    return _PUNCT.sub("", s).lower()
 
 
 def _norm(s: str) -> str:
@@ -67,19 +53,37 @@ def _spoken(narration: str, spoken) -> str:
     return spoken if spoken and _strip(spoken) == _strip(narration) else narration
 
 
+def _pick(value, allowed, default):
+    value = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    return value if value in allowed else default
+
+
+def _label(value) -> str:
+    text = re.sub(r"[^\w\s'!?.-]", "", str(value or "")).strip()
+    return " ".join(text.split()[:3])[:28]
+
+
 def _normalize(data: dict, source: str) -> dict:
     shots = []
     for s in data.get("shots", []):
         narration = clean(str(s.get("narration", "")))
         if not narration:
             continue
-        delivery = str(s.get("delivery", "")).strip().lower()
+        delivery = _pick(s.get("delivery"), DELIVERIES, "calm")
+        idx = len(shots)
+        prev = shots[-1]["scene"] if shots else None
+        fallback_scene = guess_prop(narration, NEUTRAL[idx % len(NEUTRAL)])
+        scene = _pick(s.get("scene"), PROPS, fallback_scene)
+        if scene == prev and len(PROPS) > 1:  # never the same drawing twice in a row
+            scene = fallback_scene if fallback_scene != prev else PROPS[(PROPS.index(prev) + 3) % len(PROPS)]
         shots.append({
             "narration": narration,
             "spoken": _spoken(narration, s.get("spoken")),
-            "delivery": delivery if delivery in DELIVERIES else "calm",
-            "prompt": str(s.get("prompt", "")).strip() or SCENES[len(shots) % len(SCENES)],
-            "stock_query": str(s.get("stock_query", "")).strip() or "person thinking window",
+            "delivery": delivery,
+            "scene": scene,
+            "pose": _pick(s.get("pose"), POSES, "talk"),
+            "emotion": _pick(s.get("emotion"), EMOTIONS, emotion_for(delivery, narration)),
+            "label": _label(s.get("label")),
         })
     if not shots:
         raise SystemExit("No shots with narration found in the input.")
@@ -88,8 +92,6 @@ def _normalize(data: dict, source: str) -> dict:
         tags = tags.split()
     return {
         "source": source,
-        "character_sheet": str(data.get("character_sheet") or FALLBACK_CHARACTER).strip(),
-        "style": str(data.get("style") or DEFAULT_STYLE).strip(),
         "shots": shots,
         "caption": str(data.get("caption") or "").strip(),
         "hashtags": [t if t.startswith("#") else "#" + t for t in tags],
@@ -177,12 +179,12 @@ def _plan_llm(script: str):
 
 def _clauses(script: str) -> list:
     out = []
-    for sent in (s.strip() for s in re.split(r"(?<=[.!\u061f?\u2026:])\s+", script) if s.strip()):
+    for sent in (s.strip() for s in re.split(r"(?<=[.!?…:])\s+", script) if s.strip()):
         if len(sent.split()) <= 14:
             out.append(sent)
             continue
         buf = ""
-        for part in re.split(r"(?<=[\u060c,])\s+", sent):
+        for part in re.split(r"(?<=[,;])\s+", sent):
             buf = (buf + " " + part).strip()
             if len(buf.split()) >= 6:
                 out.append(buf)
@@ -204,13 +206,18 @@ def _clauses(script: str) -> list:
     return merged or [script]
 
 
+_FALLBACK_POSES = ("talk", "point", "talk", "shrug", "think", "talk", "point", "hips")
+
+
 def _fallback(script: str) -> dict:
     parts = _clauses(script)
     shots = []
     for i, p in enumerate(parts):
         delivery = "hook" if i == 0 else "warm" if i == len(parts) - 1 else ("tense" if i % 3 == 1 else "calm")
-        shots.append({"narration": p, "delivery": delivery, "prompt": SCENES[i % len(SCENES)],
-                      "stock_query": "empty room window rain"})
+        shots.append({"narration": p, "delivery": delivery,
+                      "scene": guess_prop(p, NEUTRAL[i % len(NEUTRAL)]),
+                      "pose": "point" if i == 0 else _FALLBACK_POSES[i % len(_FALLBACK_POSES)],
+                      "emotion": emotion_for(delivery, p)})
     return _normalize({"shots": shots}, "fallback")
 
 
@@ -224,10 +231,10 @@ def plan(raw: str) -> dict:
     result = _plan_llm(script)
     if result:
         return result
-    print("::warning::No AI planner reachable - using the built-in faceless scene set. Paste a JSON shot list for full control.")
+    print("::warning::No AI planner reachable - picking props from keywords. Paste a JSON shot list for full control.")
     return _fallback(script)
 
 
 def hook_line(shots: list) -> str:
-    first = re.split(r"(?<=[.!\u061f?\u2026])\s+", shots[0]["narration"])[0]
+    first = re.split(r"(?<=[.!?…])\s+", shots[0]["narration"])[0]
     return first[:150].strip()
