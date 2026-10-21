@@ -59,7 +59,7 @@ def _rpc(method, params=None, notify=False):
 def _start():
     r = _rpc("initialize", {
         "protocolVersion": "2025-03-26", "capabilities": {},
-        "clientInfo": {"name": "persian-reel-studio", "version": "1.0"},
+        "clientInfo": {"name": "english-reel-studio", "version": "1.0"},
     })
     if not r or "error" in r:
         sys.exit(f"Composio MCP initialize failed: {str(r)[:400]}")
@@ -113,7 +113,7 @@ def _connect():
         sys.exit("Add the COMPOSIO_API_KEY repository secret (see README).")
     if not ACCOUNT:
         sys.exit("Set the IG_ACCOUNT repository variable to the alias or id of the Composio Instagram connection "
-                 "for the Persian account. It is required so nothing is posted to the wrong account.")
+                 "for the psychology account. It is required so nothing is posted to the wrong account.")
     _start()
     info = tool("INSTAGRAM_GET_USER_INFO", {"ig_user_id": "me", "fields": "id,username,account_type"})
     username = find(info.get("data"), "username") or "(unknown)"

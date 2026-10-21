@@ -4,19 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       script:
-        description: Persian narration script (or a JSON shot list)
+        description: English narration script (or a JSON shot list)
         required: true
         type: string
       voice:
         description: Narrator voice
         type: choice
-        options: [fa-IR-DilaraNeural, fa-IR-FaridNeural]
-        default: fa-IR-DilaraNeural
-      visuals:
-        description: Visual provider
-        type: choice
-        options: [pollinations, pexels]
-        default: pollinations
+        options: [en-US-AndrewNeural, en-US-AvaNeural, en-US-BrianNeural, en-US-EmmaNeural, en-US-GuyNeural, en-US-AriaNeural, en-GB-RyanNeural, en-GB-SoniaNeural]
+        default: en-US-AndrewNeural
       caption:
         description: Caption (blank = AI-written)
         type: string
@@ -55,11 +50,11 @@ jobs:
       - name: System packages
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-core
 
-      - name: Persian font (Vazirmatn)
+      - name: Caption font (Poppins ExtraBold)
         run: |
           mkdir -p fonts
-          curl -fsSL -o fonts/Vazirmatn-Bold.ttf "https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/fonts/ttf/Vazirmatn-Bold.ttf" \
-            || echo "::warning::Could not download Vazirmatn; falling back to Noto Sans Arabic."
+          curl -fsSL -o fonts/Poppins-ExtraBold.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-ExtraBold.ttf" \
+            || echo "::warning::Could not download Poppins; falling back to a system bold font."
 
       - run: pip install -r requirements.txt
 
@@ -67,10 +62,8 @@ jobs:
         env:
           SCRIPT: ${{ inputs.script }}
           VOICE: ${{ inputs.voice }}
-          VISUALS: ${{ inputs.visuals }}
           CAPTION: ${{ inputs.caption }}
           HASHTAGS: ${{ inputs.hashtags }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python -m reel.run
 
