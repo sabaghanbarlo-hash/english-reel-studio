@@ -2,14 +2,14 @@
 
 Whole sentences are synthesised in one go (a voice sounds far more natural than when it is cut into
 3-second pieces, each with its own falling 'end of sentence' tone). Word timestamps from the voice then
-drive both the picture cuts and the typewriter subtitles, so everything stays in sync.
+drive both the scene changes, the stickman's mouth and the word-by-word subtitles, so everything stays in sync.
 """
 import re
 
 from . import render, tts
 
-_END = re.compile(r"[.!\u061f?\u2026]$")
-_TRAIL = re.compile(r"[\u00bb\"')\]]+$")
+_END = re.compile(r"[.!?…]$")
+_TRAIL = re.compile(r"[”’\"')\]]+$")
 _PUNCT_ONLY = re.compile(r"^[\W_]+$")
 LEAD = 0.08   # the picture changes just before the first word of a shot
 TAIL = 0.9    # silence after the last word
@@ -31,9 +31,9 @@ def sentence_end(tok):
 
 def _gap_after(tok):
     t = _TRAIL.sub("", tok)
-    if t.endswith("\u2026"):
+    if t.endswith("…"):
         return 0.8
-    if t.endswith(("\u061f", "?")):
+    if t.endswith("?"):
         return 0.55
     return 0.6
 

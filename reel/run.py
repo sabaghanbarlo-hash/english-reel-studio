@@ -1,55 +1,39 @@
-"""Orchestrator: script -> plan -> narration (with word timings) -> visuals -> typewriter subtitles -> out/reel.mp4.
+"""Orchestrator: script -> plan -> narration (with word timings) -> stickman video -> word-by-word subtitles -> out/reel.mp4.
 
 Run from the repo root:  python -m reel.run   (inputs come from environment variables, see the workflow)
 """
-import hashlib
 import os
 from pathlib import Path
 
-from . import narration, planner, render, subtitles, tts, visuals
+from . import narration, planner, render, stickman, subtitles, tts
 
 
 def main() -> None:
     env = os.environ
-    voice = env.get("VOICE") or tts.VOICES["female"]
-    provider = env.get("VISUALS") or "pollinations"
+    voice = env.get("VOICE") or tts.VOICES["male"]
     work, out = Path("work"), Path("out")
     work.mkdir(exist_ok=True)
     out.mkdir(exist_ok=True)
 
     plan = planner.plan(env["SCRIPT"])
     shots = plan["shots"]
-    print(f"Plan source: {plan['source']} | {len(shots)} shots")
-    seed = int(hashlib.sha256("".join(s["narration"] for s in shots).encode()).hexdigest()[:6], 16)
+    print(f"Plan source: {plan['source']} | {len(shots)} scenes")
+    for i, s in enumerate(shots, 1):
+        print(f"  {i}. [{s['scene']} / {s['pose']} / {s['emotion']}] {s['narration']}")
 
     nar = narration.build(plan, voice, work)
-    shot_durs, total = nar["shot_durs"], nar["total"]
+    total = nar["total"]
     if total > 90:
         raise SystemExit(f"Reel would be {total:.0f}s - Instagram Reels max is 90s. Shorten the script.")
 
-    clips = []
-    last_vis = None
-    for i, s in enumerate(shots):
-        vis = visuals.get_visual(provider, s, i, work, plan, seed)
-        if vis is None and last_vis is not None:
-            print(f"::warning::No new picture for shot {i + 1}; reusing the previous one with a different camera move.")
-            vis = last_vis
-        elif vis is None:
-            print(f"::warning::No visual for shot {i + 1}; using a dark placeholder.")
-        else:
-            last_vis = vis
-        clip = work / f"clip{i}.mp4"
-        extra = render.XFADE if i < len(shots) - 1 else 0.0
-        render.make_clip(vis, shot_durs[i] + extra, i, clip)
-        clips.append(clip)
-    joined = work / "joined.mp4"
-    render.join_clips(clips, shot_durs, joined)
+    silent = work / "stickman.mp4"
+    stickman.render_video(plan, nar, silent)
 
     ass = work / "subs.ass"
     ass.write_text(subtitles.build(nar["words"]), encoding="utf-8")
 
     music = next(iter(sorted(Path("assets/music").glob("*.mp3"))), None)
-    render.final_mix(joined, nar["wav"], ass, "fonts", music, total, out / "reel.mp4", pad=env.get("PAD", "1") != "0")
+    render.final_mix(silent, nar["wav"], ass, "fonts", music, total, out / "reel.mp4", pad=env.get("PAD", "1") != "0")
 
     caption = env.get("CAPTION", "").strip() or plan["caption"] or planner.hook_line(shots)
     tags = env.get("HASHTAGS", "").split() or plan["hashtags"]
@@ -60,12 +44,12 @@ def main() -> None:
     summary = [
         "## Reel rendered",
         f"- Length: **{total:.1f}s** ({'inside' if 25 <= total <= 40 else 'OUTSIDE'} the 25-40s target)",
-        f"- Shots: {len(shots)} | planner: `{plan['source']}` | visuals: `{provider}` | voice: `{voice}`",
+        f"- Scenes: {len(shots)} | planner: `{plan['source']}` | style: stickman explainer | voice: `{voice}`",
         f"- File size: **{(out / 'reel.mp4').stat().st_size / 1e6:.1f} MB**",
         "- Download the MP4 from this run's **Artifacts**.",
     ]
     if plan["source"] == "fallback":
-        summary.append("- Warning: generic prompts were used (AI planner unavailable).")
+        summary.append("- Warning: props were picked from keywords (AI planner unavailable).")
     if env.get("GITHUB_STEP_SUMMARY"):
         Path(env["GITHUB_STEP_SUMMARY"]).write_text("\n".join(summary) + "\n", encoding="utf-8")
     print("\n".join(summary))
