@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Persian Reel Studio</title>
+<title>English Reel Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#0f1419;--card:#18212b;--line:#2a3644;--text:#e8eef5;--mute:#8fa1b3;--accent:#e6a23c;--ok:#4cc38a;--bad:#ef6b6b}
   *{box-sizing:border-box}
@@ -16,7 +16,6 @@
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
   label{display:block;font-size:13px;color:var(--mute);margin:12px 0 4px}
   textarea,input,select{width:100%;background:#0f1419;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit}
-  textarea.fa,input.fa{direction:rtl;font-family:Vazirmatn,Inter,sans-serif;font-size:17px}
   textarea{min-height:190px;resize:vertical}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .hint{font-size:12px;color:var(--mute);margin-top:4px}
@@ -32,14 +31,14 @@
   .q:first-child{border-top:0}
   .tag{font-size:12px;padding:2px 8px;border-radius:99px;background:#0f1419;margin-right:6px}
   .tag.queued,.tag.publishing{color:var(--accent)} .tag.posted{color:var(--ok)} .tag.failed{color:var(--bad)}
-  .cap{direction:rtl;font-family:Vazirmatn,Inter,sans-serif;color:var(--mute);margin-top:2px}
+  .cap{color:var(--mute);margin-top:2px}
   video{width:100%;max-width:360px;border-radius:12px;background:#000;display:block;margin:8px 0}
 </style>
 </head>
 <body>
 <main>
-  <h1>Persian Reel Studio</h1>
-  <p class="sub">Paste a Persian script. It renders a narrated, subtitled 9:16 reel on GitHub Actions and can post it to Instagram.</p>
+  <h1>English Reel Studio</h1>
+  <p class="sub">Paste an English script. A stickman explains it: narrated, subtitled 9:16 reel rendered on GitHub Actions, optionally posted to Instagram.</p>
 
   <div class="card">
     <details id="setup">
@@ -51,21 +50,26 @@
   </div>
 
   <div class="card">
-    <label for="script">2. Persian script</label>
-    <textarea id="script" class="fa" placeholder="متن روایت را اینجا بچسبانید..."></textarea>
+    <label for="script">2. English script</label>
+    <textarea id="script" placeholder="Paste the narration here, e.g. Your brain hates unfinished things..."></textarea>
     <p class="hint" id="est">Paste the narration only (no shot list). A JSON shot list is also accepted, see README.</p>
 
-    <div class="row">
-      <div><label for="voice">Voice</label>
-        <select id="voice"><option value="fa-IR-DilaraNeural">Dilara (female)</option><option value="fa-IR-FaridNeural">Farid (male)</option></select></div>
-      <div><label for="visuals">Visuals</label>
-        <select id="visuals"><option value="pollinations">AI stills + camera move (free)</option><option value="pexels">Stock video (needs Pexels key)</option></select></div>
-    </div>
+    <label for="voice">Narrator voice</label>
+    <select id="voice">
+      <option value="en-US-AndrewNeural">Andrew (US, male, warm)</option>
+      <option value="en-US-AvaNeural">Ava (US, female)</option>
+      <option value="en-US-BrianNeural">Brian (US, male)</option>
+      <option value="en-US-EmmaNeural">Emma (US, female)</option>
+      <option value="en-US-GuyNeural">Guy (US, male)</option>
+      <option value="en-US-AriaNeural">Aria (US, female)</option>
+      <option value="en-GB-RyanNeural">Ryan (UK, male)</option>
+      <option value="en-GB-SoniaNeural">Sonia (UK, female)</option>
+    </select>
 
     <label for="caption">Caption (optional, blank = AI-written)</label>
-    <input id="caption" class="fa">
+    <input id="caption">
     <label for="hashtags">Hashtags (optional)</label>
-    <input id="hashtags" class="fa" placeholder="#روانشناسی #رابطه">
+    <input id="hashtags" placeholder="#psychology #mindset #selfgrowth">
 
     <label for="mode">After rendering</label>
     <select id="mode"><option value="render_only">Render only (review the MP4 first)</option><option value="queue_for_best_time">Queue for the best time (posts automatically)</option><option value="post_now">Post to Instagram right away</option></select>
@@ -86,7 +90,7 @@
 </main>
 
 <script>
-const DEFAULT_REPO = "sabaghanbarlo-hash/persian-reel-studio";
+const DEFAULT_REPO = "sabaghanbarlo-hash/english-reel-studio";
 const $ = id => document.getElementById(id);
 
 function repoPath() {
@@ -111,7 +115,7 @@ $("script").addEventListener("input", () => {
   const t = $("script").value.trim();
   if (!t || t.startsWith("{")) { $("est").textContent = "Paste the narration only (no shot list). A JSON shot list is also accepted, see README."; return; }
   const words = t.split(/\s+/).length;
-  const sec = Math.round(words / 2.4 + 2);
+  const sec = Math.round(words / 2.6 + 3);
   $("est").textContent = `${words} words, roughly ${sec}s of narration (target 25-40s).` + (sec > 42 ? " Probably too long." : sec < 23 ? " Probably too short." : "");
 });
 
@@ -148,7 +152,7 @@ $("go").addEventListener("click", async () => {
   const res = await gh(`/repos/${REPO}/actions/workflows/make-reel.yml/dispatches`, {
     method: "POST",
     body: JSON.stringify({ ref: "main", inputs: {
-      script, voice: $("voice").value, visuals: $("visuals").value,
+      script, voice: $("voice").value,
       caption: $("caption").value.trim(), hashtags: $("hashtags").value.trim(), after_render: post
     } })
   });
@@ -228,7 +232,7 @@ async function loadQueue() {
   if (!$("token").value.trim()) { body.textContent = "Add your GitHub token to see the queue."; return; }
   body.textContent = "Loading...";
   try {
-    let tz = "Asia/Tehran";
+    let tz = "America/New_York";
     try { tz = JSON.parse(await ghRaw(`/repos/${REPO}/contents/queue/schedule.json`)).timezone || tz; } catch (e) {}
     const [q, p] = await Promise.all([listJson("queue"), listJson("queue/posted")]);
     q.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
