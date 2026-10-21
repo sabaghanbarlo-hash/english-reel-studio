@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 
 QUEUE, MEDIA = Path("queue"), Path("docs/queue")
 POSTED = QUEUE / "posted"
-DEFAULT_CFG = {"timezone": "Asia/Tehran", "slots": ["13:30", "21:30"], "min_lead_minutes": 30}
+DEFAULT_CFG = {"timezone": "America/New_York", "slots": ["12:30", "20:00"], "min_lead_minutes": 30}
 
 
 def now():
